@@ -70,38 +70,32 @@ func TestUplinkScenarios(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	common.DB = db
+	common.RedisPool = common.NewRedisPool(conf.RedisURL)
 
 	Convey("Given a clean database", t, func() {
-		p := common.NewRedisPool(conf.RedisURL)
-		test.MustFlushRedis(p)
-		test.MustResetDB(db)
+		test.MustFlushRedis(common.RedisPool)
+		test.MustResetDB(common.DB)
 
-		ctx := common.Context{
-			NetID:       [3]byte{3, 2, 1},
-			RedisPool:   p,
-			DB:          db,
-			Gateway:     test.NewGatewayBackend(),
-			Application: test.NewApplicationClient(),
-			Controller:  test.NewNetworkControllerClient(),
-		}
-
-		altitude := float64(10.5)
+		common.Gateway = test.NewGatewayBackend()
+		common.Application = test.NewApplicationClient()
+		common.Controller = test.NewNetworkControllerClient()
 
 		gw1 := gateway.Gateway{
 			MAC:  [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
 			Name: "test-gateway",
-			Location: &gateway.GPSPoint{
+			Location: gateway.GPSPoint{
 				Latitude:  1.1234,
 				Longitude: 1.1235,
 			},
-			Altitude: &altitude,
+			Altitude: 10.5,
 		}
 		So(gateway.CreateGateway(db, &gw1), ShouldBeNil)
 
 		rxInfo := gw.RXInfo{
 			MAC:       [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
 			Frequency: common.Band.UplinkChannels[0].Frequency,
-			DataRate:  common.Band.DataRates[common.Band.UplinkChannels[0].DataRates[0]],
+			DataRate:  common.Band.DataRates[0],
 			LoRaSNR:   7,
 		}
 
@@ -273,7 +267,7 @@ func TestUplinkScenarios(t *testing.T) {
 					Time:      rxInfo.Time.Format(time.RFC3339Nano),
 					Rssi:      int32(rxInfo.RSSI),
 					LoRaSNR:   rxInfo.LoRaSNR,
-					Altitude:  *gw1.Altitude,
+					Altitude:  gw1.Altitude,
 					Latitude:  gw1.Location.Latitude,
 					Longitude: gw1.Location.Longitude,
 				},
@@ -302,7 +296,7 @@ func TestUplinkScenarios(t *testing.T) {
 					Time:      rxInfo.Time.Format(time.RFC3339Nano),
 					Rssi:      int32(rxInfo.RSSI),
 					LoRaSNR:   rxInfo.LoRaSNR,
-					Altitude:  *gw1.Altitude,
+					Altitude:  gw1.Altitude,
 					Latitude:  gw1.Location.Latitude,
 					Longitude: gw1.Location.Longitude,
 				},
@@ -331,7 +325,7 @@ func TestUplinkScenarios(t *testing.T) {
 					Time:      rxInfo.Time.Format(time.RFC3339Nano),
 					Rssi:      int32(rxInfo.RSSI),
 					LoRaSNR:   rxInfo.LoRaSNR,
-					Altitude:  *gw1.Altitude,
+					Altitude:  gw1.Altitude,
 					Latitude:  gw1.Location.Latitude,
 					Longitude: gw1.Location.Longitude,
 				},
@@ -421,7 +415,7 @@ func TestUplinkScenarios(t *testing.T) {
 				},
 			}
 
-			runUplinkTests(ctx, tests)
+			runUplinkTests(tests)
 		})
 
 		Convey("Given a set of test-scenarios for relax frame-counter mode", func() {
@@ -447,7 +441,7 @@ func TestUplinkScenarios(t *testing.T) {
 						Time:      rxInfo.Time.Format(time.RFC3339Nano),
 						Rssi:      int32(rxInfo.RSSI),
 						LoRaSNR:   rxInfo.LoRaSNR,
-						Altitude:  *gw1.Altitude,
+						Altitude:  gw1.Altitude,
 						Latitude:  gw1.Location.Latitude,
 						Longitude: gw1.Location.Longitude,
 					},
@@ -483,7 +477,7 @@ func TestUplinkScenarios(t *testing.T) {
 						Time:      rxInfo.Time.Format(time.RFC3339Nano),
 						Rssi:      int32(rxInfo.RSSI),
 						LoRaSNR:   rxInfo.LoRaSNR,
-						Altitude:  *gw1.Altitude,
+						Altitude:  gw1.Altitude,
 						Latitude:  gw1.Location.Latitude,
 						Longitude: gw1.Location.Longitude,
 					},
@@ -550,7 +544,7 @@ func TestUplinkScenarios(t *testing.T) {
 				},
 			}
 
-			runUplinkTests(ctx, tests)
+			runUplinkTests(tests)
 		})
 
 		// TODO: add ACK test
@@ -940,7 +934,7 @@ func TestUplinkScenarios(t *testing.T) {
 				},
 			}
 
-			runUplinkTests(ctx, tests)
+			runUplinkTests(tests)
 		})
 
 		Convey("Given a set of test-scenarios for mac-command queue", func() {
@@ -1265,7 +1259,7 @@ func TestUplinkScenarios(t *testing.T) {
 				},
 			}
 
-			runUplinkTests(ctx, tests)
+			runUplinkTests(tests)
 		})
 
 		Convey("Given a set of test-scenarios for tx-payload queue", func() {
@@ -1430,7 +1424,7 @@ func TestUplinkScenarios(t *testing.T) {
 						},
 					},
 					ExpectedFCntUp:          11,
-					ExpectedFCntDown:        5, // will be incremented after the node ACKs the frame
+					ExpectedFCntDown:        6,
 					ExpectedEnabledChannels: []int{0, 1, 2},
 				},
 				{
@@ -1540,7 +1534,7 @@ func TestUplinkScenarios(t *testing.T) {
 				},
 			}
 
-			runUplinkTests(ctx, tests)
+			runUplinkTests(tests)
 		})
 
 		Convey("Given a set of test-scenarios for ADR", func() {
@@ -1593,7 +1587,7 @@ func TestUplinkScenarios(t *testing.T) {
 										CID: lorawan.LinkADRReq,
 										Payload: &lorawan.LinkADRReqPayload{
 											DataRate: 5,
-											TXPower:  1, // the ideal txpower is 3, however only steps of 1 are allowed
+											TXPower:  2,
 											ChMask:   [16]bool{true, true, true},
 											Redundancy: lorawan.Redundancy{
 												ChMaskCntl: 0,
@@ -1645,7 +1639,7 @@ func TestUplinkScenarios(t *testing.T) {
 								{
 									CID: lorawan.LinkADRReq,
 									Payload: &lorawan.LinkADRReqPayload{
-										DataRate: 5,
+										DataRate: 0,
 										TXPower:  3,
 										ChMask:   [16]bool{true, true, true},
 										Redundancy: lorawan.Redundancy{
@@ -1995,7 +1989,7 @@ func TestUplinkScenarios(t *testing.T) {
 										CID: lorawan.LinkADRReq,
 										Payload: &lorawan.LinkADRReqPayload{
 											DataRate: 5,
-											TXPower:  1, // the ideal txpower is 3, however only steps of 1 are allowed
+											TXPower:  2,
 											ChMask:   [16]bool{true, true, true},
 											Redundancy: lorawan.Redundancy{
 												ChMaskCntl: 0,
@@ -2011,26 +2005,26 @@ func TestUplinkScenarios(t *testing.T) {
 				},
 			}
 
-			runUplinkTests(ctx, tests)
+			runUplinkTests(tests)
 		})
 	})
 }
 
-func runUplinkTests(ctx common.Context, tests []uplinkTestCase) {
+func runUplinkTests(tests []uplinkTestCase) {
 	for i, t := range tests {
 		Convey(fmt.Sprintf("When testing: %s [%d]", t.Name, i), func() {
 			// set application-server mocks
-			ctx.Application.(*test.ApplicationClient).HandleDataUpErr = t.ApplicationHandleDataUpError
-			ctx.Application.(*test.ApplicationClient).GetDataDownResponse = t.ApplicationGetDataDown
-			ctx.Application.(*test.ApplicationClient).GetDataDownErr = t.ApplicationGetDataDownError
+			common.Application.(*test.ApplicationClient).HandleDataUpErr = t.ApplicationHandleDataUpError
+			common.Application.(*test.ApplicationClient).GetDataDownResponse = t.ApplicationGetDataDown
+			common.Application.(*test.ApplicationClient).GetDataDownErr = t.ApplicationGetDataDownError
 
 			// populate session and queues
-			So(session.SaveNodeSession(ctx.RedisPool, t.NodeSession), ShouldBeNil)
+			So(session.SaveNodeSession(common.RedisPool, t.NodeSession), ShouldBeNil)
 			for _, block := range t.MACCommandQueue {
-				So(maccommand.AddQueueItem(ctx.RedisPool, t.NodeSession.DevEUI, block), ShouldBeNil)
+				So(maccommand.AddQueueItem(common.RedisPool, t.NodeSession.DevEUI, block), ShouldBeNil)
 			}
 			for _, pending := range t.MACCommandPending {
-				So(maccommand.SetPending(ctx.RedisPool, t.NodeSession.DevEUI, pending), ShouldBeNil)
+				So(maccommand.SetPending(common.RedisPool, t.NodeSession.DevEUI, pending), ShouldBeNil)
 			}
 
 			// encrypt FRMPayload and set MIC
@@ -2051,23 +2045,31 @@ func runUplinkTests(ctx common.Context, tests []uplinkTestCase) {
 				RXInfo:     t.RXInfo,
 				PHYPayload: phy,
 			}
-			So(uplink.HandleRXPacket(ctx, rxPacket), ShouldResemble, t.ExpectedHandleRXPacketError)
+			err = uplink.HandleRXPacket(rxPacket)
+			if err != nil {
+				if t.ExpectedHandleRXPacketError == nil {
+					So(err.Error(), ShouldEqual, "")
+				}
+				So(err.Error(), ShouldEqual, t.ExpectedHandleRXPacketError.Error())
+			} else {
+				So(t.ExpectedHandleRXPacketError, ShouldBeNil)
+			}
 
 			// network-controller validations
 			if t.ExpectedControllerHandleRXInfo != nil {
 				Convey("Then the expected rx-info is published to the network-controller", func() {
-					So(ctx.Controller.(*test.NetworkControllerClient).HandleRXInfoChan, ShouldHaveLength, 1)
-					pl := <-ctx.Controller.(*test.NetworkControllerClient).HandleRXInfoChan
+					So(common.Controller.(*test.NetworkControllerClient).HandleRXInfoChan, ShouldHaveLength, 1)
+					pl := <-common.Controller.(*test.NetworkControllerClient).HandleRXInfoChan
 					So(&pl, ShouldResemble, t.ExpectedControllerHandleRXInfo)
 				})
 			} else {
-				So(ctx.Controller.(*test.NetworkControllerClient).HandleRXInfoChan, ShouldHaveLength, 0)
+				So(common.Controller.(*test.NetworkControllerClient).HandleRXInfoChan, ShouldHaveLength, 0)
 			}
 
 			Convey("Then the expected mac-commands are received by the network-controller", func() {
-				So(ctx.Controller.(*test.NetworkControllerClient).HandleDataUpMACCommandChan, ShouldHaveLength, len(t.ExpectedControllerHandleDataUpMACCommands))
+				So(common.Controller.(*test.NetworkControllerClient).HandleDataUpMACCommandChan, ShouldHaveLength, len(t.ExpectedControllerHandleDataUpMACCommands))
 				for _, expPl := range t.ExpectedControllerHandleDataUpMACCommands {
-					pl := <-ctx.Controller.(*test.NetworkControllerClient).HandleDataUpMACCommandChan
+					pl := <-common.Controller.(*test.NetworkControllerClient).HandleDataUpMACCommandChan
 					So(pl, ShouldResemble, expPl)
 				}
 			})
@@ -2075,47 +2077,47 @@ func runUplinkTests(ctx common.Context, tests []uplinkTestCase) {
 			// application-server validations
 			if t.ExpectedApplicationHandleDataUp != nil {
 				Convey("Then the expected rx-payloads are received by the application-server", func() {
-					So(ctx.Application.(*test.ApplicationClient).HandleDataUpChan, ShouldHaveLength, 1)
-					req := <-ctx.Application.(*test.ApplicationClient).HandleDataUpChan
+					So(common.Application.(*test.ApplicationClient).HandleDataUpChan, ShouldHaveLength, 1)
+					req := <-common.Application.(*test.ApplicationClient).HandleDataUpChan
 					So(&req, ShouldResemble, t.ExpectedApplicationHandleDataUp)
 				})
 			} else {
-				So(ctx.Application.(*test.ApplicationClient).HandleDataUpChan, ShouldHaveLength, 0)
+				So(common.Application.(*test.ApplicationClient).HandleDataUpChan, ShouldHaveLength, 0)
 			}
 
 			Convey("Then the expected error payloads are sent to the application-server", func() {
-				So(ctx.Application.(*test.ApplicationClient).HandleErrorChan, ShouldHaveLength, len(t.ExpectedApplicationHandleErrors))
+				So(common.Application.(*test.ApplicationClient).HandleErrorChan, ShouldHaveLength, len(t.ExpectedApplicationHandleErrors))
 				for _, expPL := range t.ExpectedApplicationHandleErrors {
-					pl := <-ctx.Application.(*test.ApplicationClient).HandleErrorChan
+					pl := <-common.Application.(*test.ApplicationClient).HandleErrorChan
 					So(pl, ShouldResemble, expPL)
 				}
 			})
 
 			if t.ExpectedApplicationHandleDataDownACK != nil {
 				Convey("Then the expected downlink ACK was sent to the application-server", func() {
-					So(ctx.Application.(*test.ApplicationClient).HandleDataDownACKChan, ShouldHaveLength, 1)
-					req := <-ctx.Application.(*test.ApplicationClient).HandleDataDownACKChan
+					So(common.Application.(*test.ApplicationClient).HandleDataDownACKChan, ShouldHaveLength, 1)
+					req := <-common.Application.(*test.ApplicationClient).HandleDataDownACKChan
 					So(&req, ShouldResemble, t.ExpectedApplicationHandleDataDownACK)
 				})
 			} else {
-				So(ctx.Application.(*test.ApplicationClient).HandleDataDownACKChan, ShouldHaveLength, 0)
+				So(common.Application.(*test.ApplicationClient).HandleDataDownACKChan, ShouldHaveLength, 0)
 			}
 
 			if t.ExpectedApplicationGetDataDown != nil {
 				Convey("Then the expected get data down request was made to the application-server", func() {
-					So(ctx.Application.(*test.ApplicationClient).GetDataDownChan, ShouldHaveLength, 1)
-					req := <-ctx.Application.(*test.ApplicationClient).GetDataDownChan
+					So(common.Application.(*test.ApplicationClient).GetDataDownChan, ShouldHaveLength, 1)
+					req := <-common.Application.(*test.ApplicationClient).GetDataDownChan
 					So(&req, ShouldResemble, t.ExpectedApplicationGetDataDown)
 				})
 			} else {
-				So(ctx.Application.(*test.ApplicationClient).GetDataDownChan, ShouldHaveLength, 0)
+				So(common.Application.(*test.ApplicationClient).GetDataDownChan, ShouldHaveLength, 0)
 			}
 
 			// gateway validations
 			if t.ExpectedTXInfo != nil {
 				Convey("Then the expected downlink txinfo is used", func() {
-					So(ctx.Gateway.(*test.GatewayBackend).TXPacketChan, ShouldHaveLength, 1)
-					txPacket := <-ctx.Gateway.(*test.GatewayBackend).TXPacketChan
+					So(common.Gateway.(*test.GatewayBackend).TXPacketChan, ShouldHaveLength, 1)
+					txPacket := <-common.Gateway.(*test.GatewayBackend).TXPacketChan
 					So(&txPacket.TXInfo, ShouldResemble, t.ExpectedTXInfo)
 
 					if t.ExpectedPHYPayload != nil {
@@ -2127,12 +2129,12 @@ func runUplinkTests(ctx common.Context, tests []uplinkTestCase) {
 					}
 				})
 			} else {
-				So(ctx.Gateway.(*test.GatewayBackend).TXPacketChan, ShouldHaveLength, 0)
+				So(common.Gateway.(*test.GatewayBackend).TXPacketChan, ShouldHaveLength, 0)
 			}
 
 			// node session validations
 			Convey("Then the frame-counters are as expected", func() {
-				ns, err := session.GetNodeSession(ctx.RedisPool, t.NodeSession.DevEUI)
+				ns, err := session.GetNodeSession(common.RedisPool, t.NodeSession.DevEUI)
 				So(err, ShouldBeNil)
 				So(ns.FCntDown, ShouldEqual, t.ExpectedFCntDown)
 				So(ns.FCntUp, ShouldEqual, t.ExpectedFCntUp)
@@ -2140,7 +2142,7 @@ func runUplinkTests(ctx common.Context, tests []uplinkTestCase) {
 
 			// ADR variables validations
 			Convey("Then the Channels, TXPower and NbTrans are as expected", func() {
-				ns, err := session.GetNodeSession(ctx.RedisPool, t.NodeSession.DevEUI)
+				ns, err := session.GetNodeSession(common.RedisPool, t.NodeSession.DevEUI)
 				So(err, ShouldBeNil)
 				So(ns.TXPowerIndex, ShouldEqual, t.ExpectedTXPowerIndex)
 				So(ns.NbTrans, ShouldEqual, t.ExpectedNbTrans)
@@ -2149,14 +2151,14 @@ func runUplinkTests(ctx common.Context, tests []uplinkTestCase) {
 
 			// queue validations
 			Convey("Then the mac-command queue is as expected", func() {
-				macQueue, err := maccommand.ReadQueueItems(ctx.RedisPool, t.NodeSession.DevEUI)
+				macQueue, err := maccommand.ReadQueueItems(common.RedisPool, t.NodeSession.DevEUI)
 				So(err, ShouldBeNil)
 				So(macQueue, ShouldResemble, t.ExpectedMACCommandQueue)
 			})
 
 			if t.ExpectedHandleRXPacketError == nil {
 				Convey("Then the expected RSInfoSet has been added to the node-session", func() {
-					ns, err := session.GetNodeSession(ctx.RedisPool, t.NodeSession.DevEUI)
+					ns, err := session.GetNodeSession(common.RedisPool, t.NodeSession.DevEUI)
 					So(err, ShouldBeNil)
 					So(ns.LastRXInfoSet, ShouldResemble, []gw.RXInfo{t.RXInfo})
 				})

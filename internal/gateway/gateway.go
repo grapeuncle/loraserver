@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -85,15 +85,12 @@ func (l *GPSPoint) Scan(src interface{}) error {
 
 // StatsHandler represents a stat handler for incoming gateway stats.
 type StatsHandler struct {
-	ctx common.Context
-	wg  sync.WaitGroup
+	wg sync.WaitGroup
 }
 
 // NewStatsHandler creates a new StatsHandler.
-func NewStatsHandler(ctx common.Context) *StatsHandler {
-	return &StatsHandler{
-		ctx: ctx,
-	}
+func NewStatsHandler() *StatsHandler {
+	return &StatsHandler{}
 }
 
 // Start starts the stats handler.
@@ -101,7 +98,7 @@ func (s *StatsHandler) Start() error {
 	go func() {
 		s.wg.Add(1)
 		defer s.wg.Done()
-		handleStatsPackets(&s.wg, s.ctx)
+		handleStatsPackets(&s.wg)
 	}()
 	return nil
 }
@@ -122,8 +119,8 @@ type Gateway struct {
 	UpdatedAt              time.Time     `db:"updated_at"`
 	FirstSeenAt            *time.Time    `db:"first_seen_at"`
 	LastSeenAt             *time.Time    `db:"last_seen_at"`
-	Location               *GPSPoint     `db:"location"`
-	Altitude               *float64      `db:"altitude"`
+	Location               GPSPoint      `db:"location"`
+	Altitude               float64       `db:"altitude"`
 	ChannelConfigurationID *int64        `db:"channel_configuration_id"`
 }
 
@@ -850,12 +847,12 @@ func GetExtraChannelsForChannelConfigurationID(db *sqlx.DB, id int64) ([]ExtraCh
 }
 
 // handleStatsPackets consumes received stats packets by the gateway.
-func handleStatsPackets(wg *sync.WaitGroup, ctx common.Context) {
-	for statsPacket := range ctx.Gateway.StatsPacketChan() {
+func handleStatsPackets(wg *sync.WaitGroup) {
+	for statsPacket := range common.Gateway.StatsPacketChan() {
 		go func(stats gw.GatewayStatsPacket) {
 			wg.Add(1)
 			defer wg.Done()
-			if err := handleStatsPacket(ctx.DB, stats); err != nil {
+			if err := handleStatsPacket(common.DB, stats); err != nil {
 				log.Errorf("handle stats packet error: %s", err)
 			}
 		}(statsPacket)
@@ -864,25 +861,25 @@ func handleStatsPackets(wg *sync.WaitGroup, ctx common.Context) {
 
 // handleStatsPacket handles a received stats packet by the gateway.
 func handleStatsPacket(db *sqlx.DB, stats gw.GatewayStatsPacket) error {
-	var location *GPSPoint
-	var altitude *float64
+	var location GPSPoint
+	var altitude float64
 
 	if stats.Latitude != nil && stats.Longitude != nil {
-		location = &GPSPoint{
+		location = GPSPoint{
 			Latitude:  *stats.Latitude,
 			Longitude: *stats.Longitude,
 		}
 	}
 
 	if stats.Altitude != nil {
-		altitude = stats.Altitude
+		altitude = *stats.Altitude
 	}
 
 	// create or update the gateway
 	gw, err := GetGateway(db, stats.MAC)
 	if err != nil {
-		// create the gateway
 		if err == ErrDoesNotExist && common.CreateGatewayOnStats {
+			// create the gateway
 			now := time.Now()
 
 			gw = Gateway{
@@ -906,10 +903,11 @@ func handleStatsPacket(db *sqlx.DB, stats gw.GatewayStatsPacket) error {
 			gw.FirstSeenAt = &now
 		}
 		gw.LastSeenAt = &now
-		if location != nil {
+
+		if stats.Latitude != nil && stats.Longitude != nil {
 			gw.Location = location
 		}
-		if altitude != nil {
+		if stats.Altitude != nil {
 			gw.Altitude = altitude
 		}
 

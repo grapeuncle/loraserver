@@ -8,6 +8,45 @@ menu:
 
 ## Changelog
 
+### 0.21.0
+
+**Features:**
+
+* Implement sending and receiving 'Proprietary' LoRaWAN message type.
+  LoRa Server now implements an API method for sending downlink LoRaWAN frames
+  using the 'Proprietary' message-type. 'Proprietary' uplink messages will be
+  de-duplicated by LoRa Server, before being forwarded to LoRa App Server.
+
+* ARM64 binaries are now provided.
+
+**Internal improvements:**
+
+* Various parts of the codebase have been cleaned up in preparation for the
+  upcoming LoRaWAN 1.1 changes.
+
+### 0.20.1
+
+**Features:**
+
+* Add support for `IN_865_867` ISM band.
+
+**Bugfixes:**
+
+* Remove gateway location and altitude 'nullable' option in the database.
+  This removes some complexity and fixes a nil pointer issue when compiled
+  using Go < 1.8 ([#210](https://github.com/brocaar/loraserver/issues/210)).
+
+* Update `AU_915_928` data-rates according to the LoRaWAN Regional Parameters
+  1.0.2 specification.
+
+* Better handling of ADR and TXPower nACK. In case of a nACK, LoRa Server will
+  set the max supported DR / TXPower to the requested value - 1.
+
+* The ADR engine sets the stored node TXPower to `0` when the node uses an
+  "unexpected" data-rate for uplink. This is to deal with nodes that are
+  regaining connectivity by lowering the data-rate and setting the TXPower
+  back to `0`.
+
 ### 0.20.0
 
 **Features:**

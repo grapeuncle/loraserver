@@ -3,7 +3,7 @@ package maccommand
 import (
 	"fmt"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/pkg/errors"
 
 	"github.com/brocaar/loraserver/internal/common"
@@ -13,13 +13,13 @@ import (
 )
 
 // Handle handles a MACCommand sent by a node.
-func Handle(ctx common.Context, ns *session.NodeSession, block Block, pending *Block, rxInfoSet models.RXInfoSet) error {
+func Handle(ns *session.NodeSession, block Block, pending *Block, rxInfoSet models.RXInfoSet) error {
 	var err error
 	switch block.CID {
 	case lorawan.LinkADRAns:
-		err = handleLinkADRAns(ctx, ns, block, pending)
+		err = handleLinkADRAns(ns, block, pending)
 	case lorawan.LinkCheckReq:
-		err = handleLinkCheckReq(ctx, ns, rxInfoSet)
+		err = handleLinkCheckReq(ns, rxInfoSet)
 	default:
 		err = fmt.Errorf("undefined CID %d", block.CID)
 
@@ -28,7 +28,7 @@ func Handle(ctx common.Context, ns *session.NodeSession, block Block, pending *B
 }
 
 // handleLinkADRAns handles the ack of an ADR request
-func handleLinkADRAns(ctx common.Context, ns *session.NodeSession, block Block, pendingBlock *Block) error {
+func handleLinkADRAns(ns *session.NodeSession, block Block, pendingBlock *Block) error {
 	if len(block.MACCommands) == 0 {
 		return errors.New("at least 1 mac-command expected, got none")
 	}
@@ -74,6 +74,7 @@ func handleLinkADRAns(ctx common.Context, ns *session.NodeSession, block Block, 
 		}
 
 		ns.TXPowerIndex = int(adrReq.TXPower)
+		ns.DR = int(adrReq.DataRate)
 		ns.NbTrans = adrReq.Redundancy.NbRep
 		ns.EnabledChannels = chans
 
@@ -84,6 +85,7 @@ func handleLinkADRAns(ctx common.Context, ns *session.NodeSession, block Block, 
 			"nb_trans":         adrReq.Redundancy.NbRep,
 			"enabled_channels": chans,
 		}).Info("link_adr request acknowledged")
+
 	} else {
 		// TODO: remove workaround once all RN2483 nodes have the issue below
 		// fixed.
@@ -93,8 +95,24 @@ func handleLinkADRAns(ctx common.Context, ns *session.NodeSession, block Block, 
 		// specs). It should ACK and operate at its maximum possible power
 		// when TXPower 0 is not supported. See also section 5.2 in the
 		// LoRaWAN specs.
-		if channelMaskACK && dataRateACK && !powerACK && adrReq.TXPower == 0 {
+		if !powerACK && adrReq.TXPower == 0 {
 			ns.TXPowerIndex = 1
+		}
+
+		// It is possible that the node does not support all TXPower
+		// indices. In this case we set the MaxSupportedTXPowerIndex
+		// to the request - 1. If that index is not supported, it will
+		// be lowered by 1 at the next nACK.
+		if !powerACK && adrReq.TXPower > 0 {
+			ns.MaxSupportedTXPowerIndex = int(adrReq.TXPower) - 1
+		}
+
+		// It is possible that the node does not support all data-rates.
+		// In this case we set the MaxSupportedDR to the requested - 1.
+		// If that DR is not supported, it will be lowered by 1 at the
+		// next nACK.
+		if !dataRateACK && adrReq.DataRate > 0 {
+			ns.MaxSupportedDR = int(adrReq.DataRate) - 1
 		}
 
 		log.WithFields(log.Fields{
@@ -108,7 +126,7 @@ func handleLinkADRAns(ctx common.Context, ns *session.NodeSession, block Block, 
 	return nil
 }
 
-func handleLinkCheckReq(ctx common.Context, ns *session.NodeSession, rxInfoSet models.RXInfoSet) error {
+func handleLinkCheckReq(ns *session.NodeSession, rxInfoSet models.RXInfoSet) error {
 	if len(rxInfoSet) == 0 {
 		return errors.New("rx info-set contains zero items")
 	}
@@ -136,7 +154,7 @@ func handleLinkCheckReq(ctx common.Context, ns *session.NodeSession, rxInfoSet m
 		},
 	}
 
-	if err := AddQueueItem(ctx.RedisPool, ns.DevEUI, block); err != nil {
+	if err := AddQueueItem(common.RedisPool, ns.DevEUI, block); err != nil {
 		return errors.Wrap(err, "add mac-command block to queue error")
 	}
 	return nil

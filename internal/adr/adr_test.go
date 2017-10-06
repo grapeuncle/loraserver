@@ -38,75 +38,158 @@ func TestADR(t *testing.T) {
 			}
 		})
 
-		Convey("Given a node-session with TXPowerIndex: 20 (out of range)", func() {
-			ns := session.NodeSession{TXPowerIndex: 20}
-			Convey("Then getCurrentTXPowerOffset returns 0", func() {
-				So(getCurrentTXPowerOffset(&ns), ShouldEqual, 0)
+		Convey("Testing getMaxSupportedDRForNode", func() {
+			Convey("When no MaxSupportedDR is set on the node session, it returns getMaxAllowedDR", func() {
+				ns := session.NodeSession{}
+				So(getMaxSupportedDRForNode(&ns), ShouldEqual, getMaxAllowedDR())
+			})
+
+			Convey("When MaxSupportedDR is set on the node session, this value is returned", func() {
+				ns := session.NodeSession{
+					MaxSupportedDR: 3,
+				}
+				So(getMaxSupportedDRForNode(&ns), ShouldEqual, ns.MaxSupportedDR)
+				So(getMaxSupportedDRForNode(&ns), ShouldNotEqual, getMaxAllowedDR())
 			})
 		})
 
-		Convey("Given a node-session with TXPowerIndex set", func() {
-			ns := session.NodeSession{TXPowerIndex: 1}
-			Convey("Then getCurrentTXPowerOffset returns the expected value", func() {
-				So(getCurrentTXPowerOffset(&ns), ShouldEqual, common.Band.TXPowerOffset[1])
+		Convey("getMaxTXPowerOffsetIndex returns 7", func() {
+			So(getMaxTXPowerOffsetIndex(), ShouldEqual, 7)
+		})
+
+		Convey("Testing getMaxSupportedTXPowerOffsetIndexForNode", func() {
+			Convey("When no MaxSupportedTXPowerIndex is set on the node session, it returns getMaxTXPowerOffsetIndex", func() {
+				ns := session.NodeSession{}
+				So(getMaxSupportedTXPowerOffsetIndexForNode(&ns), ShouldEqual, getMaxTXPowerOffsetIndex())
 			})
-		})
 
-		Convey("getMaxTXPowerOffset returns -14", func() {
-			So(getMaxTXPowerOffset(), ShouldEqual, -14)
-		})
-
-		Convey("Given a testtable for getTXPowerIndexForOffset", func() {
-			testTable := []struct {
-				TXPowerOffset int
-				ExpectedIndex int
-			}{
-				{0, 0},
-				{-1, 0},
-				{-2, 1},
-				{-3, 1},
-				{-4, 2},
-				{-5, 2},
-				{-6, 3},
-				{-7, 3},
-				{-8, 4},
-				{-9, 4},
-				{-10, 5},
-				{-11, 5},
-				{-12, 6},
-				{-13, 6},
-				{-14, 7},
-				{-15, 7},
-			}
-
-			for i, tst := range testTable {
-				Convey(fmt.Sprintf("Given TXPowerOffset is %d, then the returned TXPower index is: %d [%d]", tst.TXPowerOffset, tst.ExpectedIndex, i), func() {
-					So(getTXPowerIndexForOffset(tst.TXPowerOffset), ShouldEqual, tst.ExpectedIndex)
-				})
-			}
+			Convey("When MaxSupportedTXPowerIndex is set on the node session, this value is returned", func() {
+				ns := session.NodeSession{
+					MaxSupportedTXPowerIndex: 3,
+				}
+				So(getMaxSupportedTXPowerOffsetIndexForNode(&ns), ShouldEqual, ns.MaxSupportedTXPowerIndex)
+				So(getMaxSupportedTXPowerOffsetIndexForNode(&ns), ShouldNotEqual, getMaxTXPowerOffsetIndex())
+			})
 		})
 
 		Convey("Given a testtable for getIdealTXPowerAndDR", func() {
 			testTable := []struct {
-				NStep                 int
-				TXPowerOffset         int
-				DR                    int
-				ExpectedTXPowerOffset int
-				ExpectedDR            int
+				Name                     string
+				NStep                    int
+				TXPowerIndex             int
+				MaxSupportedDR           int
+				MaxSupportedTXPowerIndex int
+				DR                       int
+				ExpectedTXPowerIndex     int
+				ExpectedDR               int
 			}{
-				{NStep: 0, TXPowerOffset: -2, DR: 3, ExpectedTXPowerOffset: -2, ExpectedDR: 3},
-				{NStep: 1, TXPowerOffset: -2, DR: 4, ExpectedTXPowerOffset: -2, ExpectedDR: 5},
-				{NStep: 1, TXPowerOffset: -2, DR: 5, ExpectedTXPowerOffset: -5, ExpectedDR: 5},
-				{NStep: 2, TXPowerOffset: -2, DR: 4, ExpectedTXPowerOffset: -5, ExpectedDR: 5},
-				{NStep: -1, TXPowerOffset: -2, DR: 4, ExpectedTXPowerOffset: 1, ExpectedDR: 4},
-				{NStep: -1, TXPowerOffset: 0, DR: 4, ExpectedTXPowerOffset: 0, ExpectedDR: 4},
+				{
+					Name:                     "nothing to adjust",
+					NStep:                    0,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),          // 5
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   3,
+					ExpectedDR:           3,
+					ExpectedTXPowerIndex: 1,
+				},
+				{
+					Name:                     "one step: one step data-rate increase",
+					NStep:                    1,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   4,
+					ExpectedDR:           5,
+					ExpectedTXPowerIndex: 1,
+				},
+				{
+					Name:                     "one step: one step tx-power decrease",
+					NStep:                    1,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   5,
+					ExpectedDR:           5,
+					ExpectedTXPowerIndex: 2,
+				},
+				{
+					Name:                     "two steps: two steps data-rate increase",
+					NStep:                    2,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   3,
+					ExpectedDR:           5,
+					ExpectedTXPowerIndex: 1,
+				},
+				{
+					Name:                     "two steps: one step data-rate increase (due to max supported dr), one step tx-power decrease",
+					NStep:                    2,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           4,
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   3,
+					ExpectedDR:           4,
+					ExpectedTXPowerIndex: 2,
+				},
+				{
+					Name:                     "two steps: one step data-rate increase, one step tx-power decrease",
+					NStep:                    2,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   4,
+					ExpectedDR:           5,
+					ExpectedTXPowerIndex: 2,
+				},
+				{
+					Name:                     "two steps: two steps tx-power decrease",
+					NStep:                    2,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   5,
+					ExpectedDR:           5,
+					ExpectedTXPowerIndex: 3,
+				},
+				{
+					Name:                     "two steps: one step tx-power decrease due to max supported tx power index",
+					NStep:                    2,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: 2,
+					DR:                   5,
+					ExpectedDR:           5,
+					ExpectedTXPowerIndex: 2,
+				},
+				{
+					Name:                     "one negative step: one step power increase",
+					NStep:                    -1,
+					TXPowerIndex:             1,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   4,
+					ExpectedDR:           4,
+					ExpectedTXPowerIndex: 0,
+				},
+				{
+					Name:                     "one negative step, nothing to do (adr engine will never decrease data-rate)",
+					NStep:                    -1,
+					TXPowerIndex:             0,
+					MaxSupportedDR:           getMaxAllowedDR(),
+					MaxSupportedTXPowerIndex: getMaxTXPowerOffsetIndex(), // 5
+					DR:                   4,
+					ExpectedDR:           4,
+					ExpectedTXPowerIndex: 0,
+				},
 			}
 
 			for i, tst := range testTable {
-				Convey(fmt.Sprintf("Given NStep: %d, TXPowerOffset: %d, DR: %d [%d]", tst.NStep, tst.TXPowerOffset, tst.DR, i), func() {
-					Convey(fmt.Sprintf("Then the ideal TXPowerOffset is %d and DR %d", tst.ExpectedTXPowerOffset, tst.ExpectedDR), func() {
-						idealTXPowerOffset, idealDR := getIdealTXPowerOffsetAndDR(tst.NStep, tst.TXPowerOffset, tst.DR)
-						So(idealTXPowerOffset, ShouldEqual, tst.ExpectedTXPowerOffset)
+				Convey(fmt.Sprintf("Testing '%s' with NStep: %d, TXPowerOffsetIndex: %d, DR: %d [%d]", tst.Name, tst.NStep, tst.TXPowerIndex, tst.DR, i), func() {
+					Convey(fmt.Sprintf("Then the ideal TXPowerOffsetIndex is %d and DR %d", tst.ExpectedTXPowerIndex, tst.ExpectedDR), func() {
+						idealTXPowerIndex, idealDR := getIdealTXPowerOffsetAndDR(tst.NStep, tst.TXPowerIndex, tst.DR, tst.MaxSupportedTXPowerIndex, tst.MaxSupportedDR)
+						So(idealTXPowerIndex, ShouldEqual, tst.ExpectedTXPowerIndex)
 						So(idealDR, ShouldEqual, tst.ExpectedDR)
 					})
 				})
@@ -114,12 +197,8 @@ func TestADR(t *testing.T) {
 		})
 
 		Convey("Given a clean Redis database", func() {
-			p := common.NewRedisPool(conf.RedisURL)
-			test.MustFlushRedis(p)
-
-			ctx := common.Context{
-				RedisPool: p,
-			}
+			common.RedisPool = common.NewRedisPool(conf.RedisURL)
+			test.MustFlushRedis(common.RedisPool)
 
 			Convey("Given a testtable for HandleADR", func() {
 				phyPayloadNoADR := lorawan.PHYPayload{
@@ -213,6 +292,93 @@ func TestADR(t *testing.T) {
 								{FCnt: 1, MaxSNR: -7, GatewayCount: 1},
 							},
 							EnabledChannels: []int{0, 1, 2},
+							DR:              2,
+						},
+						ExpectedMACCommandQueue: []maccommand.Block{
+							macBlock,
+						},
+						ExpectedError: nil,
+					},
+					{
+						Name: "ADR increasing tx-power by one step (no CFlist)",
+						NodeSession: &session.NodeSession{
+							DevAddr:            [4]byte{1, 2, 3, 4},
+							DevEUI:             [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
+							ADRInterval:        1,
+							InstallationMargin: 5,
+							EnabledChannels:    []int{0, 1, 2},
+							DR:                 5,
+							TXPowerIndex:       3,
+						},
+						RXPacket: models.RXPacket{
+							PHYPayload: phyPayloadADR,
+							RXInfoSet: models.RXInfoSet{
+								{DataRate: common.Band.DataRates[5], LoRaSNR: 1},
+							},
+						},
+						FullFCnt: 1,
+						ExpectedNodeSession: session.NodeSession{
+							DevAddr:            [4]byte{1, 2, 3, 4},
+							DevEUI:             [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
+							ADRInterval:        1,
+							InstallationMargin: 5,
+							UplinkHistory: []session.UplinkHistory{
+								{FCnt: 1, MaxSNR: 1, GatewayCount: 1},
+							},
+							EnabledChannels: []int{0, 1, 2},
+							DR:              5,
+							TXPowerIndex:    3,
+						},
+						ExpectedMACCommandQueue: []maccommand.Block{
+							{
+								CID: lorawan.LinkADRReq,
+								MACCommands: []lorawan.MACCommand{
+									{
+										CID: lorawan.LinkADRReq,
+										Payload: &lorawan.LinkADRReqPayload{
+											DataRate: 5,
+											TXPower:  4,
+											ChMask:   lorawan.ChMask{true, true, true},
+											Redundancy: lorawan.Redundancy{
+												ChMaskCntl: 0,
+												NbRep:      1,
+											},
+										},
+									},
+								},
+							},
+						},
+						ExpectedError: nil,
+					},
+					{
+						Name: "ADR increasing data-rate by one step and tx-power reset due to node changing its data-rate (no CFlist)",
+						NodeSession: &session.NodeSession{
+							DevAddr:            [4]byte{1, 2, 3, 4},
+							DevEUI:             [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
+							ADRInterval:        1,
+							InstallationMargin: 5,
+							EnabledChannels:    []int{0, 1, 2},
+							DR:                 5,
+							TXPowerIndex:       3,
+						},
+						RXPacket: models.RXPacket{
+							PHYPayload: phyPayloadADR,
+							RXInfoSet: models.RXInfoSet{
+								{DataRate: common.Band.DataRates[2], LoRaSNR: -7},
+							},
+						},
+						FullFCnt: 1,
+						ExpectedNodeSession: session.NodeSession{
+							DevAddr:            [4]byte{1, 2, 3, 4},
+							DevEUI:             [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
+							ADRInterval:        1,
+							InstallationMargin: 5,
+							UplinkHistory: []session.UplinkHistory{
+								{FCnt: 1, MaxSNR: -7, GatewayCount: 1},
+							},
+							EnabledChannels: []int{0, 1, 2},
+							DR:              2,
+							TXPowerIndex:    0,
 						},
 						ExpectedMACCommandQueue: []maccommand.Block{
 							macBlock,
@@ -257,6 +423,7 @@ func TestADR(t *testing.T) {
 								{FCnt: 1, MaxSNR: -7, GatewayCount: 1},
 							},
 							EnabledChannels: []int{0, 1, 2},
+							DR:              2,
 						},
 						ExpectedMACCommandQueue: []maccommand.Block{
 							{
@@ -304,6 +471,7 @@ func TestADR(t *testing.T) {
 							UplinkHistory: []session.UplinkHistory{
 								{FCnt: 1, MaxSNR: -7, GatewayCount: 1},
 							},
+							DR: 2,
 						},
 						ExpectedMACCommandQueue: []maccommand.Block{
 							macCFListBlock,
@@ -333,6 +501,7 @@ func TestADR(t *testing.T) {
 							UplinkHistory: []session.UplinkHistory{
 								{FCnt: 1, MaxSNR: -7, GatewayCount: 1},
 							},
+							DR: 2,
 						},
 						ExpectedError: nil,
 					},
@@ -340,13 +509,13 @@ func TestADR(t *testing.T) {
 
 				for i, tst := range testTable {
 					Convey(fmt.Sprintf("Test: %s [%d]", tst.Name, i), func() {
-						So(session.SaveNodeSession(p, *tst.NodeSession), ShouldBeNil)
+						So(session.SaveNodeSession(common.RedisPool, *tst.NodeSession), ShouldBeNil)
 
 						for _, block := range tst.MACCommandQueue {
-							So(maccommand.AddQueueItem(p, tst.NodeSession.DevEUI, block), ShouldBeNil)
+							So(maccommand.AddQueueItem(common.RedisPool, tst.NodeSession.DevEUI, block), ShouldBeNil)
 						}
 
-						err := HandleADR(ctx, tst.NodeSession, tst.RXPacket, tst.FullFCnt)
+						err := HandleADR(tst.NodeSession, tst.RXPacket, tst.FullFCnt)
 						if tst.ExpectedError != nil {
 							So(err, ShouldResemble, tst.ExpectedError)
 							return
@@ -355,7 +524,7 @@ func TestADR(t *testing.T) {
 						So(err, ShouldBeNil)
 						So(tst.NodeSession, ShouldResemble, &tst.ExpectedNodeSession)
 
-						macPayloadQueue, err := maccommand.ReadQueueItems(p, tst.NodeSession.DevEUI)
+						macPayloadQueue, err := maccommand.ReadQueueItems(common.RedisPool, tst.NodeSession.DevEUI)
 						So(err, ShouldBeNil)
 						So(macPayloadQueue, ShouldResemble, tst.ExpectedMACCommandQueue)
 					})
